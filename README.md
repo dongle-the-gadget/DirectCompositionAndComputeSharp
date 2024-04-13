@@ -1,0 +1,1 @@
+A sample program demonstrating DirectComposition rendering a Direct2D shader (powered by ComputeSharp).
