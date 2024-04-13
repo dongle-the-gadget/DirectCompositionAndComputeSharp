@@ -18,9 +18,24 @@ namespace CompositionStuff;
 
 static class Program
 {
+    static ComPtr<ID3D11Device> direct3dDevice = default;
+    static ComPtr<IDXGIDevice2> dxgiDevice = default;
+    static ComPtr<ID2D1Factory2> d2dFactory2 = default;
+    static ComPtr<ID2D1Device> d2dDevice = default;
+    static ComPtr<IDCompositionDesktopDevice> dcompDevice = default;
+    static ComPtr<IDCompositionVirtualSurface> surface = default;
+    static ComPtr<IDCompositionVisual> visual = default;
+    static ComPtr<IDCompositionTarget> dcompTarget = default;
+    static ComPtr<IDCompositionSurfaceFactory> surfaceFactory = default;
+    static HWND myWnd;
+    static Stopwatch stopwatch;
+    static Timer timer;
+    static volatile int isDrawing;
+    static bool initialized = false;
+
     static unsafe void Main(string[] args)
     {
-        myWnd = CreateWindowInternal(
+        myWnd = CreateWindowWrapper(
             "DirectComposition Window",
             "ExampleDirectComposition",
             WINDOW_EX_STYLE.WS_EX_NOREDIRECTIONBITMAP | WINDOW_EX_STYLE.WS_EX_OVERLAPPEDWINDOW,
@@ -29,8 +44,6 @@ static class Program
         InitializeDComp();
         SetBuffer(0f, new(1000, 640));
         ShowWindow(myWnd, SHOW_WINDOW_CMD.SW_SHOW);
-
-        
 
         stopwatch = new Stopwatch();
         timer = new Timer(
@@ -57,6 +70,7 @@ static class Program
         }
 
         // Dispose of all resources
+        DisposeDComp();
         stopwatch.Stop();
         timer.Dispose();
     }
@@ -75,7 +89,7 @@ static class Program
         direct3dDevice.Dispose();
     }
 
-    static unsafe HWND CreateWindowInternal(string titleName, string className, WINDOW_EX_STYLE dwExStyle, WINDOW_STYLE dwStyle)
+    static unsafe HWND CreateWindowWrapper(string titleName, string className, WINDOW_EX_STYLE dwExStyle, WINDOW_STYLE dwStyle)
     {
         HINSTANCE hInstance = GetModuleHandle(new PCWSTR());
 
@@ -102,21 +116,6 @@ static class Program
 
         return hwnd;
     }
-
-    static ComPtr<ID3D11Device> direct3dDevice = default;
-    static ComPtr<IDXGIDevice2> dxgiDevice = default;
-    static ComPtr<ID2D1Factory2> d2dFactory2 = default;
-    static ComPtr<ID2D1Device> d2dDevice = default;
-    static ComPtr<IDCompositionDesktopDevice> dcompDevice = default;
-    static ComPtr<IDCompositionVirtualSurface> surface = default;
-    static ComPtr<IDCompositionVisual> visual = default;
-    static ComPtr<IDCompositionTarget> dcompTarget = default;
-    static ComPtr<IDCompositionSurfaceFactory> surfaceFactory = default;
-    static HWND myWnd;
-    static Stopwatch stopwatch;
-    static Timer timer;
-    static volatile int isDrawing;
-    static bool initialized = false;
 
     static unsafe void InitializeDComp()
     {
