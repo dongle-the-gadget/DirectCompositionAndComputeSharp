@@ -42,7 +42,7 @@ static class Program
             WINDOW_STYLE.WS_OVERLAPPEDWINDOW);
 
         InitializeDComp();
-        SetBuffer(0f, new(1000, 640));
+        SetBuffer(0f, new(1000, 640), false);
         ShowWindow(myWnd, SHOW_WINDOW_CMD.SW_SHOW);
 
         stopwatch = new Stopwatch();
@@ -55,7 +55,7 @@ static class Program
                     GetClientRect(myWnd, &rect);
                 }
                 int2 size = new(rect.right, rect.bottom);
-                SetBuffer((float)stopwatch.Elapsed.TotalSeconds, size);
+                SetBuffer((float)stopwatch.Elapsed.TotalSeconds, size, false);
             },
             state: null,
             dueTime: TimeSpan.Zero,
@@ -70,9 +70,11 @@ static class Program
         }
 
         // Dispose of all resources
-        DisposeDComp();
         stopwatch.Stop();
+        stopwatch = null;
         timer.Dispose();
+        timer = null;
+        DisposeDComp();
     }
 
     static void DisposeDComp()
@@ -177,7 +179,7 @@ static class Program
         initialized = true;
     }
 
-    static unsafe void SetBuffer(float time, int2 size)
+    static unsafe void SetBuffer(float time, int2 size, bool resize)
     {
         // If another frame is already being concurrently drawn, do nothing
         if (Interlocked.CompareExchange(ref isDrawing, 1, 0) == 1)
@@ -189,7 +191,8 @@ static class Program
             if (size.X == 0 || size.Y == 0)
                 return;
 
-            surface.Get()->Resize((uint)size.X, (uint)size.Y);
+            if (!resize)
+                surface.Get()->Resize((uint)size.X, (uint)size.Y);
             using ComPtr<ID2D1DeviceContext> context = default;
             System.Drawing.Point point;
             surface.Get()->BeginDraw(null, __uuidof<ID2D1DeviceContext>(), (void**)context.GetAddressOf(), &point);
@@ -235,7 +238,7 @@ static class Program
                 return D2D1_COMPOSITE_MODE.D2D1_COMPOSITE_MODE_PLUS;
 
             default:
-                throw new Exception();
+                throw new ArgumentException("Invalid primitive blend mode.");
         }
     }
 
@@ -250,14 +253,8 @@ static class Program
 
             case WM_SIZE:
                 if (initialized && stopwatch != null)
-                    SetBuffer((float)stopwatch.Elapsed.TotalSeconds, new((int)(lParam & 0xFFFF), (int)(lParam >> 16)));
+                    SetBuffer((float)stopwatch.Elapsed.TotalSeconds, new((int)(lParam & 0xFFFF), (int)(lParam >> 16)), true);
                 break;
-            
-            case WM_GETMINMAXINFO:
-                MINMAXINFO* mmi = (MINMAXINFO*)lParam.Value;
-                mmi->ptMinTrackSize.X = Math.Max(1, mmi->ptMinTrackSize.X);
-                mmi->ptMinTrackSize.Y = Math.Max(1, mmi->ptMinTrackSize.Y);
-                return new LRESULT(0);
         }
 
         return DefWindowProc(hWnd, Msg, wParam, lParam);

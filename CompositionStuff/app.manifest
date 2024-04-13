@@ -8,7 +8,7 @@
 
   <asmv3:application>
     <windowsSettings xmlns:ws2016="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
-      <ws2016:dpiAwareness>PerMonitorV2</ws2016:dpiAwareness>
+      <ws2016:dpiAwareness>PerMonitor,PerMonitorV2</ws2016:dpiAwareness>
       <ws2016:longPathAware>true</ws2016:longPathAware>
     </windowsSettings>
   </asmv3:application>

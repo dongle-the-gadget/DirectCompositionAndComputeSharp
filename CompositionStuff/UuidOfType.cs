@@ -15,6 +15,8 @@ internal static partial class UuidOfTypeMethods
     public static unsafe Guid* __uuidof<T>()
         where T : unmanaged, Windows.Win32.IComIID
     {
+        // This is safe, as we know T.Guid here is a reference to an RVA-backed field,
+        // which is directly embedded into our assembly (which is always present).
         return (Guid*)Unsafe.AsPointer(ref Unsafe.AsRef(in T.Guid));
     }
 }
