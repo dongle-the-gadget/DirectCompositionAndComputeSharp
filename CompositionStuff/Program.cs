@@ -191,7 +191,7 @@ static class Program
             if (size.X == 0 || size.Y == 0)
                 return;
 
-            if (!resize)
+            if (resize)
                 surface.Get()->Resize((uint)size.X, (uint)size.Y);
             using ComPtr<ID2D1DeviceContext> context = default;
             System.Drawing.Point point;
