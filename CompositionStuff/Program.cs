@@ -1,25 +1,17 @@
-﻿using System.ComponentModel;
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
+﻿using System;
 using System.Runtime.InteropServices;
-using Windows.Win32.Foundation;
-using Windows.Win32.Graphics.Direct2D;
-using Windows.Win32.Graphics.Direct3D11;
-using Windows.Win32.Graphics.DirectComposition;
-using Windows.Win32.Graphics.Dxgi;
-using Windows.Win32.Graphics.Dxgi.Common;
-using Windows.Win32.UI.WindowsAndMessaging;
-using static Windows.Win32.PInvoke;
-using static CompositionStuff.UuidOfTypeMethods;
 using ComputeSharp.D2D1.Interop;
-using Windows.Win32.Graphics.Direct2D.Common;
+using TerraFX.Interop.Windows;
+using TerraFX.Interop.DirectX;
+using static TerraFX.Interop.Windows.Windows;
+using static TerraFX.Interop.DirectX.DirectX;
 
 namespace CompositionStuff;
 
-static class Program
+struct Program
 {
     static ComPtr<ID3D11Device> direct3dDevice = default;
-    static ComPtr<IDXGIDevice2> dxgiDevice = default;
+    static ComPtr<IDXGIDevice> dxgiDevice = default;
     static ComPtr<ID2D1Factory2> d2dFactory2 = default;
     static ComPtr<ID2D1Device> d2dDevice = default;
     static ComPtr<IDCompositionDesktopDevice> dcompDevice = default;
@@ -28,53 +20,34 @@ static class Program
     static ComPtr<IDCompositionTarget> dcompTarget = default;
     static ComPtr<IDCompositionSurfaceFactory> surfaceFactory = default;
     static HWND myWnd;
-    static Stopwatch stopwatch;
-    static Timer timer;
-    static volatile int isDrawing;
+    static CustomStopwatch stopwatch;
+    static CustomSemaphore semaphore;
     static bool initialized = false;
-
+    
     static unsafe void Main(string[] args)
     {
         myWnd = CreateWindowWrapper(
             "DirectComposition Window",
             "ExampleDirectComposition",
-            WINDOW_EX_STYLE.WS_EX_NOREDIRECTIONBITMAP | WINDOW_EX_STYLE.WS_EX_OVERLAPPEDWINDOW,
-            WINDOW_STYLE.WS_OVERLAPPEDWINDOW);
+            WS.WS_EX_NOREDIRECTIONBITMAP | WS.WS_EX_OVERLAPPEDWINDOW,
+            WS.WS_OVERLAPPEDWINDOW);
 
+        stopwatch = new CustomStopwatch();
+        semaphore = new CustomSemaphore(1, 1);
         InitializeDComp();
         SetBuffer(0f, new(1000, 640), false);
-        ShowWindow(myWnd, SHOW_WINDOW_CMD.SW_SHOW);
+        ShowWindow(myWnd, SW.SW_SHOW);
 
-        stopwatch = new Stopwatch();
-        timer = new Timer(
-            callback: static _ => 
-            {
-                RECT rect;
-                unsafe
-                {
-                    GetClientRect(myWnd, &rect);
-                }
-                int2 size = new(rect.right, rect.bottom);
-                SetBuffer((float)stopwatch.Elapsed.TotalSeconds, size, false);
-            },
-            state: null,
-            dueTime: TimeSpan.Zero,
-            period: TimeSpan.FromSeconds(1 / 60.0));
-        stopwatch.Start();
+        SetTimer(myWnd, 0, 1000 / 60, null);
 
         MSG msg;
-        while (GetMessage(&msg, HWND.Null, 0, 0))
+        while (GetMessage(&msg, HWND.NULL, 0, 0))
         {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-
-        // Dispose of all resources
-        stopwatch.Stop();
-        stopwatch = null;
-        timer.Dispose();
-        timer = null;
         DisposeDComp();
+        semaphore.Dispose();
     }
 
     static void DisposeDComp()
@@ -91,9 +64,9 @@ static class Program
         direct3dDevice.Dispose();
     }
 
-    static unsafe HWND CreateWindowWrapper(string titleName, string className, WINDOW_EX_STYLE dwExStyle, WINDOW_STYLE dwStyle)
+    static unsafe HWND CreateWindowWrapper(string titleName, string className, int dwExStyle, int dwStyle)
     {
-        HINSTANCE hInstance = GetModuleHandle(new PCWSTR());
+        HINSTANCE hInstance = GetModuleHandleW(null);
 
         fixed (char* lpClassName = className)
         {
@@ -105,123 +78,122 @@ static class Program
                 lpfnWndProc = &MyWndProc
             };
 
-            if (RegisterClass(&wc) == 0)
-                throw new Win32Exception($"Failed to register window class. Error code {Marshal.GetLastPInvokeError()}");
+            RegisterClassW(&wc);
         }
 
-        HWND hwnd = CreateWindowEx(dwExStyle, className, titleName,
-            dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, 1000, 640,
-            HWND.Null, HMENU.Null, hInstance, null);
+        HWND hwnd;
 
-        if (hwnd == HWND.Null)
-            throw new Win32Exception($"Failed to create window. Error code {Marshal.GetLastPInvokeError()}");
+        fixed (char* lpClassName = className)
+        fixed (char* lpTitleName = titleName)
+            hwnd = CreateWindowEx((uint)dwExStyle, lpClassName, lpTitleName,
+                (uint)dwStyle, CW_USEDEFAULT, CW_USEDEFAULT, 1000, 640,
+                HWND.NULL, HMENU.NULL, hInstance, null);
 
         return hwnd;
     }
 
     static unsafe void InitializeDComp()
     {
+        D3D_FEATURE_LEVEL level = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0;
+
         HRESULT hr;
         if ((hr = D3D11CreateDevice(
             null,
-            Windows.Win32.Graphics.Direct3D.D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE,
-            HMODULE.Null,
-            D3D11_CREATE_DEVICE_FLAG.D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            null,
-            0,
-            D3D11_SDK_VERSION,
+            D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE,
+            HMODULE.NULL,
+            (uint)D3D11_CREATE_DEVICE_FLAG.D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            &level,
+            1,
+            D3D11.D3D11_SDK_VERSION,
             direct3dDevice.GetAddressOf(),
             null,
-            null)) != HRESULT.S_OK)
+            null)) != S.S_OK)
         {
             // TODO: Provide WARP fallback.
             // TODO: Listen for hardware changes.
-            Marshal.ThrowExceptionForHR(D3D11CreateDevice(
+            ShowErrorAndFail(D3D11CreateDevice(
             null,
-            Windows.Win32.Graphics.Direct3D.D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_WARP,
-            HMODULE.Null,
-            D3D11_CREATE_DEVICE_FLAG.D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            null,
-            0,
-            D3D11_SDK_VERSION,
+            D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_WARP,
+            HMODULE.NULL,
+            (uint)D3D11_CREATE_DEVICE_FLAG.D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            &level,
+            1,
+            D3D11.D3D11_SDK_VERSION,
             direct3dDevice.GetAddressOf(),
             null,
             null));
         }
 
-        if ((hr = direct3dDevice.CopyTo(ref dxgiDevice)) != HRESULT.S_OK)
-            Marshal.ThrowExceptionForHR(hr);
+        if ((hr = direct3dDevice.As(ref dxgiDevice)) != S.S_OK)
+            ShowErrorAndFail(hr);
 
         if ((hr = D2D1CreateFactory(
             D2D1_FACTORY_TYPE.D2D1_FACTORY_TYPE_SINGLE_THREADED,
             __uuidof<ID2D1Factory2>(),
             null,
-            (void**)d2dFactory2.GetAddressOf())) != HRESULT.S_OK)
-            Marshal.ThrowExceptionForHR(hr);
+            (void**)d2dFactory2.GetAddressOf())) != S.S_OK)
+            ShowErrorAndFail(hr);
 
-        d2dFactory2.Get()->CreateDevice((IDXGIDevice*)dxgiDevice.Get(), d2dDevice.GetAddressOf());
+        ShowErrorAndFail(d2dFactory2.Get()->CreateDevice(dxgiDevice.Get(), d2dDevice.GetAddressOf()));
 
         if ((hr = DCompositionCreateDevice3(
-            (Windows.Win32.System.Com.IUnknown*)d2dDevice.Get(),
+            (IUnknown*)d2dDevice.Get(),
             __uuidof<IDCompositionDesktopDevice>(),
-            (void**)dcompDevice.GetAddressOf())) != HRESULT.S_OK)
-            Marshal.ThrowExceptionForHR(hr);
+            (void**)dcompDevice.GetAddressOf())) != S.S_OK)
+            ShowErrorAndFail(hr);
 
         D2D1PixelShaderEffect.RegisterForD2D1Factory1<HelloWorld>(d2dFactory2.Get(), out _);
-        dcompDevice.Get()->CreateTargetForHwnd(myWnd, true, dcompTarget.GetAddressOf());
-        dcompDevice.Get()->CreateVisual((IDCompositionVisual2**)visual.GetAddressOf());
-        dcompDevice.Get()->CreateSurfaceFactory((Windows.Win32.System.Com.IUnknown*)d2dDevice.Get(), surfaceFactory.GetAddressOf());
-        surfaceFactory.Get()->CreateVirtualSurface(1000, 640, DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ALPHA_MODE.DXGI_ALPHA_MODE_IGNORE, surface.GetAddressOf());
-        visual.Get()->SetContent((Windows.Win32.System.Com.IUnknown*)surface.Get());
+        ShowErrorAndFail(dcompDevice.Get()->CreateTargetForHwnd(myWnd, true, dcompTarget.GetAddressOf()));
+        ShowErrorAndFail(dcompDevice.Get()->CreateVisual((IDCompositionVisual2**)visual.GetAddressOf()));
+        ShowErrorAndFail(dcompDevice.Get()->CreateSurfaceFactory((IUnknown*)d2dDevice.Get(), surfaceFactory.GetAddressOf()));
+        ShowErrorAndFail(surfaceFactory.Get()->CreateVirtualSurface(1000, 640, DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_ALPHA_MODE.DXGI_ALPHA_MODE_IGNORE, surface.GetAddressOf()));
+        ShowErrorAndFail(visual.Get()->SetContent((IUnknown*)surface.Get()));
 
-        dcompTarget.Get()->SetRoot(visual.Get());
-        dcompDevice.Get()->Commit();
+        ShowErrorAndFail(dcompTarget.Get()->SetRoot(visual.Get()));
+        ShowErrorAndFail(dcompDevice.Get()->Commit());
         initialized = true;
     }
 
     static unsafe void SetBuffer(float time, int2 size, bool resize)
     {
         // If another frame is already being concurrently drawn, do nothing
-        if (Interlocked.CompareExchange(ref isDrawing, 1, 0) == 1)
+        if (!semaphore.Wait(0))
         {
             return;
         }
-        try
-        {
-            if (size.X == 0 || size.Y == 0)
-                return;
+        if (size.X == 0 || size.Y == 0)
+            return;
 
-            if (resize)
-                surface.Get()->Resize((uint)size.X, (uint)size.Y);
-            using ComPtr<ID2D1DeviceContext> context = default;
-            System.Drawing.Point point;
-            surface.Get()->BeginDraw(null, __uuidof<ID2D1DeviceContext>(), (void**)context.GetAddressOf(), &point);
-            context.Get()->Clear();
-            using ComPtr<ID2D1Effect> effect = default;
-            D2D1PixelShaderEffect.CreateFromD2D1DeviceContext<HelloWorld>(context.Get(), (void**)effect.GetAddressOf());
-            D2D1PixelShaderEffect.SetConstantBufferForD2D1Effect(effect.Get(), new HelloWorld(time, size));
-            using ComPtr<ID2D1Image> image = default;
-            effect.Get()->GetOutput(image.GetAddressOf());
-            D2D_POINT_2F convertedOffset = new() { x = point.X, y = point.Y };
-            D2D_RECT_F rect = new() { top = 0, left = 0, right = size.X, bottom = size.Y };
-            context.Get()->DrawImage(image.Get(), &convertedOffset, &rect, D2D1_INTERPOLATION_MODE.D2D1_INTERPOLATION_MODE_LINEAR, GetCompositeModeFromPrimitiveBlend(context.Get()->GetPrimitiveBlend()));
-            surface.Get()->EndDraw();
-            dcompDevice.Get()->Commit();
-        }
-        catch (Exception ex)
+        if (resize)
+            CheckIfDeviceFailureOrThrowError(surface.Get()->Resize((uint)size.X, (uint)size.Y));
+        using ComPtr<ID2D1DeviceContext> context = default;
+        POINT point;
+        CheckIfDeviceFailureOrThrowError(surface.Get()->BeginDraw(null, __uuidof<ID2D1DeviceContext>(), (void**)context.GetAddressOf(), &point));
+        context.Get()->Clear();
+        using ComPtr<ID2D1Effect> effect = default;
+        D2D1PixelShaderEffect.CreateFromD2D1DeviceContext<HelloWorld>(context.Get(), (void**)effect.GetAddressOf());
+        D2D1PixelShaderEffect.SetConstantBufferForD2D1Effect(effect.Get(), new HelloWorld(time, size));
+        using ComPtr<ID2D1Image> image = default;
+        effect.Get()->GetOutput(image.GetAddressOf());
+        D2D_POINT_2F convertedOffset = new() { x = point.x, y = point.y };
+        D2D_RECT_F rect = new() { top = 0, left = 0, right = size.X, bottom = size.Y };
+        context.Get()->DrawImage(image.Get(), &convertedOffset, &rect, D2D1_INTERPOLATION_MODE.D2D1_INTERPOLATION_MODE_LINEAR, GetCompositeModeFromPrimitiveBlend(context.Get()->GetPrimitiveBlend()));
+        CheckIfDeviceFailureOrThrowError(surface.Get()->EndDraw());
+        CheckIfDeviceFailureOrThrowError(dcompDevice.Get()->Commit());
+
+        static void CheckIfDeviceFailureOrThrowError(HRESULT hresult)
         {
-            if (ex.HResult == -2005270523 || ex.HResult == -2005270521)
+            // If the device was removed or reset, recreate the device and all dependent resources.
+            if (hresult == DXGI.DXGI_ERROR_DEVICE_REMOVED || hresult == DXGI.DXGI_ERROR_DEVICE_RESET)
             {
                 DisposeDComp();
                 InitializeDComp();
+                return;
             }
-            else
-                throw;
+            ShowErrorAndFail(hresult);
         }
-        finally
-        {
-            isDrawing = 0;
-        }
+
+        semaphore.Release();
     }
 
     static D2D1_COMPOSITE_MODE GetCompositeModeFromPrimitiveBlend(D2D1_PRIMITIVE_BLEND blend)
@@ -242,21 +214,43 @@ static class Program
         }
     }
 
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    [UnmanagedCallersOnly]
     public static unsafe LRESULT MyWndProc(HWND hWnd, uint Msg, WPARAM wParam, LPARAM lParam)
     {
         switch (Msg)
         {
-            case WM_CLOSE:
+            case WM.WM_CLOSE:
                 PostQuitMessage(0);
                 break;
 
-            case WM_SIZE:
-                if (initialized && stopwatch != null)
-                    SetBuffer((float)stopwatch.Elapsed.TotalSeconds, new((int)(lParam & 0xFFFF), (int)(lParam >> 16)), true);
+            case WM.WM_SIZE:
+                if (initialized)
+                    SetBuffer((float)stopwatch.ElapsedSeconds, new((int)(lParam & 0xFFFF), (int)(lParam >> 16)), true);
+                break;
+
+            case WM.WM_TIMER:
+                RECT rect;
+                GetClientRect(myWnd, &rect);
+                int2 size = new(rect.right, rect.bottom);
+                SetBuffer((float)stopwatch.ElapsedSeconds, size, false);
                 break;
         }
 
         return DefWindowProc(hWnd, Msg, wParam, lParam);
+    }
+
+    private static unsafe void ShowErrorAndFail(HRESULT hr)
+    {
+        if (hr == S.S_OK)
+        {
+            return;
+        }
+        // Show message: 'Initialization failed with error code: 0x{hr:X8}', then exit.
+        string message = $"Initialization failed with error code: 0x{hr:X8}";
+        fixed (char* lpText = message)
+        {
+            MessageBoxW(HWND.NULL, lpText, null, 0);
+        }
+        PostQuitMessage(0);
     }
 }
