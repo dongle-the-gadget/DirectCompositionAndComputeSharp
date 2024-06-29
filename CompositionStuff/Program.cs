@@ -162,7 +162,10 @@ struct Program
             return;
         }
         if (size.X == 0 || size.Y == 0)
+        {
+            semaphore.Release();
             return;
+        }
 
         if (resize)
             CheckIfDeviceFailureOrThrowError(surface.Get()->Resize((uint)size.X, (uint)size.Y));

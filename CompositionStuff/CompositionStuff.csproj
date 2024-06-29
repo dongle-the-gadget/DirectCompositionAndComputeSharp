@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.22621</TargetFramework>
+    <LTLSupportedOSPlatformVersion>6.3.9600</LTLSupportedOSPlatformVersion>
+    <TargetFramework>net9.0-windows10.0.22621</TargetFramework>
     <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -19,6 +20,7 @@
     <IlcGenerateDgmlFile>true</IlcGenerateDgmlFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <OptimizationPreference>Size</OptimizationPreference>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,8 +28,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ComputeSharp.D2D1" Version="3.0.0-preview2" />
+    <PackageReference Include="ComputeSharp.D2D1" Version="3.0.1" />
     <PackageReference Include="TerraFX.Interop.Windows" Version="10.0.22621.6" />
+    <PackageReference Include="VC-LTL" Version="5.1.1-Beta2" />
   </ItemGroup>
 
 </Project>
