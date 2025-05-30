@@ -29,7 +29,7 @@ struct Program
         myWnd = CreateWindowWrapper(
             "DirectComposition Window",
             "ExampleDirectComposition",
-            WS.WS_EX_NOREDIRECTIONBITMAP | WS.WS_EX_OVERLAPPEDWINDOW,
+            WS.WS_EX_NOREDIRECTIONBITMAP,
             WS.WS_OVERLAPPEDWINDOW);
 
         stopwatch = new CustomStopwatch();
@@ -229,6 +229,7 @@ struct Program
             case WM.WM_SIZE:
                 if (initialized)
                     SetBuffer((float)stopwatch.ElapsedSeconds, new((int)(lParam & 0xFFFF), (int)(lParam >> 16)), true);
+                DwmFlush();
                 break;
 
             case WM.WM_TIMER:
